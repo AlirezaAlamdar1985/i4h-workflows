@@ -53,6 +53,11 @@ set -e
 # echo "Selected policy setup: $INSTALL_WITH_POLICY"
 
 
+# Force Conda's environment bin to take top priority for all child scripts
+export CONDA_PREFIX="/opt/miniforge3/envs/robotic_ultrasound"
+export PATH="${CONDA_PREFIX}/bin:${PATH}"
+export PYTHON_EXECUTABLE="${CONDA_PREFIX}/bin/python"
+
 # # --- Setup Steps ---
 # # Get the parent directory of the current script
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd .. && pwd)"
