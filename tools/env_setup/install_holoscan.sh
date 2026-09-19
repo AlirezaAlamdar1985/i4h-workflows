@@ -34,13 +34,23 @@ echo "Holoscan installed successfully!"
 echo "Building Holoscan Apps..."
 pushd $HOLOSCAN_DIR
 
-# clean previous downloads and builds
+# 1. Resolve Holoscan module path and active Python executable
+HOLOSCAN_PATH=$($PYTHON_EXECUTABLE -c "import holoscan, os; print(os.path.dirname(holoscan.__file__))")
+ACTIVE_PYTHON=$(which $PYTHON_EXECUTABLE)
+
+# 2. Clean previous downloads and builds
 rm -rf build
 rm -rf clarius_solum/include
 rm -rf clarius_solum/lib
 rm -rf clarius_cast/include
 rm -rf clarius_cast/lib
-cmake -B build -S . && cmake --build build
+
+# 3. Configure and build CMake with explicit prefix paths
+cmake -B build -S . \
+  -DCMAKE_PREFIX_PATH="${HOLOSCAN_PATH};${CONDA_PREFIX}" \
+  -DPYTHON_EXECUTABLE="${ACTIVE_PYTHON}"
+
+cmake --build build
 
 popd
 echo "Holoscan Apps build completed!"

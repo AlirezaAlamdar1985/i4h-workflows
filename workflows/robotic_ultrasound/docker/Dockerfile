@@ -62,6 +62,7 @@ COPY workflows /workspace/i4h-workflows/workflows
 COPY i4h /workspace/i4h-workflows/i4h
 COPY CMakeLists.txt /workspace/i4h-workflows/CMakeLists.txt
 
+# Install Miniconda & Create Python Environment
 RUN mkdir -p /opt/miniconda3 && \
     wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /opt/miniconda3/miniconda.sh && \
     bash /opt/miniconda3/miniconda.sh -b -u -p /opt/miniconda3 && \
@@ -74,6 +75,16 @@ RUN mkdir -p /opt/miniconda3 && \
 
 ENV PATH="/opt/miniconda3/envs/robotic_ultrasound/bin:/opt/miniconda3/bin:$PATH"
 ENV CONDA_DEFAULT_ENV=robotic_ultrasound
+
+# 1. SET CLI COMMIT ENVIRONMENT VARIABLES & RUN INITIALIZATION
+ENV CLI_FORCE_UPDATE=1
+ENV CLI_PINNED_COMMIT=4e9eeba
+
+RUN source /opt/miniconda3/bin/activate && \
+    conda activate robotic_ultrasound && \
+    cd /workspace/i4h-workflows && \
+    chmod +x ./i4h && \
+    ./i4h list
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     source /opt/miniconda3/bin/activate && \

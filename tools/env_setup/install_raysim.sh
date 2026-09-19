@@ -38,7 +38,6 @@ echo "Cloning i4h-sensor-simulation repo..."
 
 if [ -d "$ULTRASOUND_RAYTRACING_DIR" ]; then
     echo "Ultrasound-raytracing repo already exists at $ULTRASOUND_RAYTRACING_DIR. Skipping clone."
-    exit 1
 else
     git clone https://github.com/isaac-for-healthcare/i4h-sensor-simulation.git "$ULTRASOUND_RAYTRACING_DIR"
     pushd "$ULTRASOUND_RAYTRACING_DIR"
@@ -48,6 +47,12 @@ fi
 
 
 cd $ULTRASOUND_RAYTRACING_DIR/ultrasound-raytracing
+
+# --- Hot-patch for scikit-build-core compatibility ---
+if [ -f "pyproject.toml" ]; then
+    echo "Patching pyproject.toml CMake version key..."
+    sed -i 's/cmake.minimum-version = "3.24.0"/cmake.version = ">=3.24.0"/g' pyproject.toml
+fi
 
 export CMAKE_BUILD_PARALLEL_LEVEL=1
 export CXXFLAGS="${CXXFLAGS} -Wno-error=array-bounds"

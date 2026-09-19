@@ -109,7 +109,7 @@ echo "Installing lerobot..."
 bash "$PROJECT_ROOT/tools/env_setup/install_lerobot.sh"
 
 # for holoscan, we need to install the following conda packages:
-conda install -c conda-forge 'pybind11>=2.10.0' gcc=12.4.0 gxx=12.4.0 libstdcxx-ng=12.4.0 -y
+mamba install -c conda-forge 'pybind11>=2.10.0' gcc=12.4.0 gxx=12.4.0 libstdcxx-ng=12.4.0 -y
 
 # ---- Installing Clarius libs ----
 echo "Installing Clarius libs..."
