@@ -15,15 +15,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+#!/bin/bash
 set -e
 
-# Get the parent directory of the current script
-# Assuming this script is in tools/env_setup/
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd ../.. && pwd)"
-
-# Allow setting the python in PYTHON_EXECUTABLE
 PYTHON_EXECUTABLE=${PYTHON_EXECUTABLE:-python}
-
 HOLOSCAN_DIR=${1:-$PROJECT_ROOT/workflows/robotic_ultrasound/scripts/holoscan_apps/}
 
 # ---- Install Holoscan ----
@@ -34,20 +30,22 @@ echo "Holoscan installed successfully!"
 echo "Building Holoscan Apps..."
 pushd $HOLOSCAN_DIR
 
-# 1. Resolve Holoscan module path and active Python executable
-HOLOSCAN_PATH=$($PYTHON_EXECUTABLE -c "import holoscan, os; print(os.path.dirname(holoscan.__file__))")
+# 1. Resolve exact site-packages and Conda lib paths where holoscanConfig.cmake lives
+HOLOSCAN_SITE_PKGS=$($PYTHON_EXECUTABLE -c "import site; print(site.getsitepackages()[0])")
 ACTIVE_PYTHON=$(which $PYTHON_EXECUTABLE)
 
-# 2. Clean previous downloads and builds
-rm -rf build
-rm -rf clarius_solum/include
-rm -rf clarius_solum/lib
-rm -rf clarius_cast/include
-rm -rf clarius_cast/lib
+# Find the exact directory containing holoscanConfig.cmake / holoscan-config.cmake
+HOLOSCAN_CMAKE_DIR=$(find "$CONDA_PREFIX" "$HOLOSCAN_SITE_PKGS" -name "holoscanConfig.cmake" -o -name "holoscan-config.cmake" 2>/dev/null | head -n 1 | xargs dirname)
 
-# 3. Configure and build CMake with explicit prefix paths
+echo "Located holoscan CMake configs at: $HOLOSCAN_CMAKE_DIR"
+
+# 2. Clean previous downloads and builds
+rm -rf build clarius_solum/include clarius_solum/lib clarius_cast/include clarius_cast/lib
+
+# 3. Configure CMake with explicit holoscan_DIR and CMAKE_PREFIX_PATH
 cmake -B build -S . \
-  -DCMAKE_PREFIX_PATH="${HOLOSCAN_PATH};${CONDA_PREFIX}" \
+  -Dholoscan_DIR="${HOLOSCAN_CMAKE_DIR}" \
+  -DCMAKE_PREFIX_PATH="${CONDA_PREFIX};${HOLOSCAN_SITE_PKGS}" \
   -DPYTHON_EXECUTABLE="${ACTIVE_PYTHON}"
 
 cmake --build build
