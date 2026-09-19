@@ -15,14 +15,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+#!/bin/bash
 set -e
 
-# Get the parent directory of the current script
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd ../.. && pwd)"
-
-# Inherit PYTHON_EXECUTABLE from parent environment, default to Conda's python
 PYTHON_EXECUTABLE=${PYTHON_EXECUTABLE:-$CONDA_PREFIX/bin/python}
-
 HOLOSCAN_DIR=${1:-$PROJECT_ROOT/workflows/robotic_ultrasound/scripts/holoscan_apps/}
 
 # ---- Install Holoscan ----
@@ -33,19 +30,24 @@ echo "Holoscan installed successfully!"
 echo "Building Holoscan Apps..."
 pushd $HOLOSCAN_DIR
 
-# 1. Resolve Holoscan module directory within Conda site-packages
-HOLOSCAN_PATH=$($PYTHON_EXECUTABLE -c "import holoscan, os; print(os.path.dirname(holoscan.__file__))")
+# 1. Locate holoscanConfig.cmake anywhere inside the active environment
+HOLOSCAN_CMAKE_FILE=$(find "$CONDA_PREFIX" /venv/robotic_ultrasound -name "*holoscan*Config*.cmake" 2>/dev/null | head -n 1)
 
-# 2. Clean previous downloads and build artifacts
-rm -rf build
-rm -rf clarius_solum/include
-rm -rf clarius_solum/lib
-rm -rf clarius_cast/include
-rm -rf clarius_cast/lib
+if [ -z "$HOLOSCAN_CMAKE_FILE" ]; then
+    echo "ERROR: Could not locate holoscanConfig.cmake inside $CONDA_PREFIX or /venv/robotic_ultrasound!"
+    exit 1
+fi
 
-# 3. Configure and build CMake targeting Conda's prefix
+HOLOSCAN_CMAKE_DIR=$(dirname "$HOLOSCAN_CMAKE_FILE")
+echo "Found Holoscan CMake configuration at: $HOLOSCAN_CMAKE_DIR"
+
+# 2. Clean previous build artifacts
+rm -rf build clarius_solum/include clarius_solum/lib clarius_cast/include clarius_cast/lib
+
+# 3. Configure and build
 cmake -B build -S . \
-  -DCMAKE_PREFIX_PATH="${HOLOSCAN_PATH};${HOLOSCAN_PATH}/cmake;${CONDA_PREFIX}" \
+  -Dholoscan_DIR="${HOLOSCAN_CMAKE_DIR}" \
+  -DCMAKE_PREFIX_PATH="${HOLOSCAN_CMAKE_DIR};${CONDA_PREFIX}" \
   -DPYTHON_EXECUTABLE="${PYTHON_EXECUTABLE}"
 
 cmake --build build

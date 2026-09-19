@@ -54,7 +54,7 @@ set -e
 
 
 # Force Conda's environment bin to take top priority for all child scripts
-export CONDA_PREFIX="/opt/miniforge3/envs/robotic_ultrasound"
+export CONDA_PREFIX="/venv/robotic_ultrasound"
 export PATH="${CONDA_PREFIX}/bin:${PATH}"
 export PYTHON_EXECUTABLE="${CONDA_PREFIX}/bin/python"
 
