@@ -109,7 +109,14 @@ echo "Installing lerobot..."
 bash "$PROJECT_ROOT/tools/env_setup/install_lerobot.sh"
 
 # for holoscan, we need to install the following conda packages:
-mamba install -c conda-forge 'pybind11>=2.10.0' gcc=12.4.0 gxx=12.4.0 libstdcxx-ng=12.4.0 -y
+# "conda"/"mamba" may not be on PATH in scripts (conda is a shell function in interactive
+# shells), so try CONDA_EXE (set by conda activate), then conda, then mamba.
+CONDA_BIN="${CONDA_EXE:-$(command -v conda || command -v mamba || true)}"
+if [ -z "$CONDA_BIN" ]; then
+    echo "Error: could not find conda or mamba executable."
+    exit 1
+fi
+"$CONDA_BIN" install -c conda-forge 'pybind11>=2.10.0' gcc=12.4.0 gxx=12.4.0 libstdcxx-ng=12.4.0 -y
 
 # ---- Installing Clarius libs ----
 echo "Installing Clarius libs..."
