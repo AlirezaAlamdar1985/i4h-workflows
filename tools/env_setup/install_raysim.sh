@@ -49,6 +49,12 @@ fi
 
 cd $ULTRASOUND_RAYTRACING_DIR/ultrasound-raytracing
 
+# v0.4.0 uses the old scikit-build-core key, which scikit-build-core >= 0.8 rejects
+if grep -q 'cmake.minimum-version' pyproject.toml; then
+    echo "Patching pyproject.toml CMake version key..."
+    sed -i 's/cmake.minimum-version = "3.24.0"/cmake.version = ">=3.24.0"/g' pyproject.toml
+fi
+
 export CMAKE_BUILD_PARALLEL_LEVEL=1
 export CXXFLAGS="${CXXFLAGS} -Wno-error=array-bounds"
 CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=80" pip install -e .
