@@ -85,7 +85,9 @@ SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP_HOLOHUB_DIR=""  # Set dynamically in download_cli to avoid race conditions
 CLI_DIR="${CLI_DIR:-${SCRIPT_PATH}/tools}"
 REPO_URL="${CLI_REPO_URL:-https://github.com/nvidia-holoscan/holohub.git}"
-CLI_PINNED_COMMIT="${CLI_PINNED_COMMIT:-}"  # Empty means use 'main' branch
+# Pinned to the HoloHub commit from just before the v0.5.0 release (2026-03-13). Newer HoloHub
+# moved the CLI out of utilities/cli/holohub.py into the holoscan-cli package (#1583).
+CLI_PINNED_COMMIT="${CLI_PINNED_COMMIT-913dcffa7c0f959281e7e4185158ec7c58c5f79f}"  # Set to empty to use the main branch
 
 # Function to cleanup temporary directories
 cleanup_tmp() {
