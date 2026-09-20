@@ -77,14 +77,12 @@ ENV PATH="/opt/miniconda3/envs/robotic_ultrasound/bin:/opt/miniconda3/bin:$PATH"
 ENV CONDA_DEFAULT_ENV=robotic_ultrasound
 
 # 1. SET CLI COMMIT ENVIRONMENT VARIABLES & RUN INITIALIZATION
-ENV CLI_FORCE_UPDATE=1
-ENV CLI_PINNED_COMMIT=4e9eeba
 
 RUN source /opt/miniconda3/bin/activate && \
     conda activate robotic_ultrasound && \
     cd /workspace/i4h-workflows && \
     chmod +x ./i4h && \
-    ./i4h list
+    CLI_FORCE_UPDATE=1 CLI_PINNED_COMMIT="4e9eeba" ./i4h list
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     source /opt/miniconda3/bin/activate && \

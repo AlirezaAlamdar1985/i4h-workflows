@@ -15,11 +15,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-#!/bin/bash
 set -e
 
+# Get the parent directory of the current script
+# Assuming this script is in tools/env_setup/
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd ../.. && pwd)"
-PYTHON_EXECUTABLE=${PYTHON_EXECUTABLE:-$CONDA_PREFIX/bin/python}
+
+# Allow setting the python in PYTHON_EXECUTABLE
+PYTHON_EXECUTABLE=${PYTHON_EXECUTABLE:-python}
+
 HOLOSCAN_DIR=${1:-$PROJECT_ROOT/workflows/robotic_ultrasound/scripts/holoscan_apps/}
 
 # ---- 1. Install Holoscan Python Bindings ----
@@ -31,7 +35,11 @@ echo "Building Holoscan Apps..."
 pushd $HOLOSCAN_DIR
 
 # 3. Clean previous build directory
-rm -rf build clarius_solum/include clarius_solum/lib clarius_cast/include clarius_cast/lib
+rm -rf build
+rm -rf clarius_solum/include
+rm -rf clarius_solum/lib
+rm -rf clarius_cast/include
+rm -rf clarius_cast/lib
 
 # 4. Configure CMake using the system C++ SDK path
 cmake -B build -S . \
@@ -42,4 +50,4 @@ cmake -B build -S . \
 cmake --build build
 
 popd
-echo "Holoscan Apps build completed successfully!"
+echo "Holoscan Apps build completed!"

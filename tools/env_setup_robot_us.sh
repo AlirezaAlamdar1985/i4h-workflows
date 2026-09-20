@@ -17,108 +17,107 @@
 
 set -e
 
-# # --- Configuration ---
-# INSTALL_WITH_POLICY="pi0" # Default value
+# --- Configuration ---
+INSTALL_WITH_POLICY="pi0" # Default value
 
-# # --- Helper Functions ---
-# usage() {
-#     echo "Usage: $0 --policy [pi0|gr00tn1|none]"
-#     echo "  pi0:   Install base dependencies + PI0 policy dependencies (openpi)."
-#     echo "  gr00tn1: Install base dependencies + GR00T N1 policy dependencies (Isaac-GR00T)."
-#     echo "  none:  Install only base dependencies (IsaacSim, IsaacLab, Holoscan, etc.)."
-#     exit 1
-# }
+# --- Helper Functions ---
+usage() {
+    echo "Usage: $0 --policy [pi0|gr00tn1|none]"
+    echo "  pi0:   Install base dependencies + PI0 policy dependencies (openpi)."
+    echo "  gr00tn1: Install base dependencies + GR00T N1 policy dependencies (Isaac-GR00T)."
+    echo "  none:  Install only base dependencies (IsaacSim, IsaacLab, Holoscan, etc.)."
+    exit 1
+}
 
-# # --- Argument Parsing ---
-# while [[ $# -gt 0 ]]; do
-#     key="$1"
-#     case $key in
-#         --policy)
-#         INSTALL_WITH_POLICY="$2"
-#         shift # past argument
-#         shift # past value
-#         ;;
-#         *)    # unknown option
-#         usage
-#         ;;
-#     esac
-# done
+# --- Argument Parsing ---
+while [[ $# -gt 0 ]]; do
+    key="$1"
+    case $key in
+        --policy)
+        INSTALL_WITH_POLICY="$2"
+        shift # past argument
+        shift # past value
+        ;;
+        *)    # unknown option
+        usage
+        ;;
+    esac
+done
 
-# # Validate policy argument
-# if [[ "$INSTALL_WITH_POLICY" != "pi0" && "$INSTALL_WITH_POLICY" != "gr00tn1" && "$INSTALL_WITH_POLICY" != "none" ]]; then
-#     echo "Error: Invalid policy specified."
-#     usage
-# fi
+# Validate policy argument
+if [[ "$INSTALL_WITH_POLICY" != "pi0" && "$INSTALL_WITH_POLICY" != "gr00tn1" && "$INSTALL_WITH_POLICY" != "none" ]]; then
+    echo "Error: Invalid policy specified."
+    usage
+fi
 
-# echo "Selected policy setup: $INSTALL_WITH_POLICY"
-
+echo "Selected policy setup: $INSTALL_WITH_POLICY"
 
 # Force Conda's environment bin to take top priority for all child scripts
 export CONDA_PREFIX="/venv/robotic_ultrasound"
 export PATH="${CONDA_PREFIX}/bin:${PATH}"
 export PYTHON_EXECUTABLE="${CONDA_PREFIX}/bin/python"
 
-# # --- Setup Steps ---
-# # Get the parent directory of the current script
+# --- Setup Steps ---
+# Get the parent directory of the current script
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd .. && pwd)"
 source "$PROJECT_ROOT/tools/env_setup/bash_utils.sh"
 
-# # Check if running in a conda environment
-# check_conda_env
+# Check if running in a conda environment
+check_conda_env
 
-# # Check if NVIDIA GPU is available
-# check_nvidia_gpu
+# Check if NVIDIA GPU is available
+check_nvidia_gpu
 
-# # Check if the third_party directory exists
-# ensure_fresh_third_party_dir
-
-
-# # ---- Install build tools (Common) ----
-# echo "Installing build tools..."
-# if [ "$EUID" -ne 0 ]; then
-#     sudo apt-get install -y cmake
-#     sudo apt-get update
-#     sudo apt-get install -y git build-essential libxcb-cursor0 unzip
-# else
-#     apt-get install -y cmake
-#     apt-get update
-#     apt-get install -y git build-essential libxcb-cursor0 unzip
-# fi
+# Check if the third_party directory exists
+ensure_fresh_third_party_dir
 
 
-# # ---- Install necessary dependencies (Common) ----
-# echo "Installing necessary dependencies..."
-# pip install rti.connext==7.3.0 pyrealsense2==2.55.1.6486 toml==0.10.2 dearpygui==2.0.0 \
-#     setuptools==75.8.0 matplotlib scipy\
-#     --extra-index-url https://pypi.nvidia.com
+# ---- Install build tools (Common) ----
+echo "Installing build tools..."
+if [ "$EUID" -ne 0 ]; then
+    sudo apt-get install -y cmake
+    sudo apt-get update
+    sudo apt-get install -y git build-essential libxcb-cursor0 unzip
+else
+    apt-get install -y cmake
+    apt-get update
+    apt-get install -y git build-essential libxcb-cursor0 unzip
+fi
 
 
-# # ---- Install IsaacSim and IsaacLab (Common) ----
-# # Check if IsaacLab is already cloned
-# echo "Installing IsaacSim and IsaacLab..."
+# ---- Install necessary dependencies (Common) ----
+echo "Installing necessary dependencies..."
+pip install rti.connext==7.3.0 pyrealsense2==2.55.1.6486 toml==0.10.2 dearpygui==2.0.0 \
+    setuptools==75.8.0 matplotlib scipy\
+    --extra-index-url https://pypi.nvidia.com
 
-# bash $PROJECT_ROOT/tools/env_setup/install_isaacsim5.1_isaaclab2.3.sh
 
-# # ---- Install Robotic Ultrasound Extensions and Dependencies ----
-# echo "Installing Robotic Ultrasound Extensions and Dependencies..."
-# bash "$PROJECT_ROOT/tools/env_setup/install_robotic_us_ext.sh"
+# ---- Install IsaacSim and IsaacLab (Common) ----
+# Check if IsaacLab is already cloned
+echo "Installing IsaacSim and IsaacLab..."
 
-# echo "Installing PI0 Policy Dependencies..."
-# bash "$PROJECT_ROOT/tools/env_setup/install_pi0.sh"
+bash $PROJECT_ROOT/tools/env_setup/install_isaacsim5.1_isaaclab2.3.sh
 
-# echo "Installing GR00T N1 Policy Dependencies (delegating to script)..."
-# bash "$PROJECT_ROOT/tools/env_setup/install_gr00tn1.sh"
+# ---- Install Robotic Ultrasound Extensions and Dependencies ----
+echo "Installing Robotic Ultrasound Extensions and Dependencies..."
+bash "$PROJECT_ROOT/tools/env_setup/install_robotic_us_ext.sh"
 
-# # ---- Install lerobot (Common) ----
-# echo "Installing lerobot..."
-# bash "$PROJECT_ROOT/tools/env_setup/install_lerobot.sh"
+echo "Installing PI0 Policy Dependencies..."
+bash "$PROJECT_ROOT/tools/env_setup/install_pi0.sh"
 
-# # for holoscan, we need to install the following conda packages:
-# mamba install -c conda-forge 'pybind11>=2.10.0' gcc=12.4.0 gxx=12.4.0 libstdcxx-ng=12.4.0 -y
+echo "Installing GR00T N1 Policy Dependencies (delegating to script)..."
+bash "$PROJECT_ROOT/tools/env_setup/install_gr00tn1.sh"
 
-# # ---- Installing Clarius libs ----
-# echo "Installing Clarius libs..."
-# bash $PROJECT_ROOT/tools/env_setup/install_clarius.sh
+# ---- Install lerobot (Common) ----
+echo "Installing lerobot..."
+bash "$PROJECT_ROOT/tools/env_setup/install_lerobot.sh"
+
+# for holoscan, we need to install the following conda packages:
+mamba install -c conda-forge 'pybind11>=2.10.0' gcc=12.4.0 gxx=12.4.0 libstdcxx-ng=12.4.0 -y
+
+# ---- Installing Clarius libs ----
+echo "Installing Clarius libs..."
+bash $PROJECT_ROOT/tools/env_setup/install_clarius.sh
 
 
 
