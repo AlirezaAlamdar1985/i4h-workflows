@@ -23,7 +23,8 @@ I4H_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd ../.. && pwd)"
   # Install i4h CLI components (pinned so the HoloHub cmake helpers match this repo)
   cd $I4H_ROOT
   export CLI_PINNED_COMMIT="${CLI_PINNED_COMMIT:-4e9eeba}"
-  ./i4h list
+  # Force a clean download so a stale or partial tools/utilities never gets reused
+  CLI_FORCE_UPDATE=1 ./i4h list
   rm -rf build && rm -rf install && cmake . -B build -DOP_clarius_cast=ON -DOP_clarius_solum=ON && cmake --build build && cmake --install build --prefix ${I4H_ROOT}/install
 
   # Check if install folder was created successfully
