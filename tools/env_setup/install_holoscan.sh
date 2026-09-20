@@ -17,37 +17,12 @@
 
 set -e
 
-# Get the parent directory of the current script
-# Assuming this script is in tools/env_setup/
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd ../.. && pwd)"
-
 # Allow setting the python in PYTHON_EXECUTABLE
 PYTHON_EXECUTABLE=${PYTHON_EXECUTABLE:-python}
 
-HOLOSCAN_DIR=${1:-$PROJECT_ROOT/workflows/robotic_ultrasound/scripts/holoscan_apps/}
-
-# ---- 1. Install Holoscan Python Bindings ----
+# ---- Install Holoscan ----
+# The Clarius apps/operators are built and installed by install_clarius.sh from the
+# repository root project (which provides add_holohub_application), so only the
+# Holoscan Python package is needed here.
 $PYTHON_EXECUTABLE -m pip install holoscan==2.9.0
-echo "Holoscan Python bindings installed!"
-
-# ---- 2. Build Holoscan C++ Apps ----
-echo "Building Holoscan Apps..."
-pushd $HOLOSCAN_DIR
-
-# 3. Clean previous build directory
-rm -rf build
-rm -rf clarius_solum/include
-rm -rf clarius_solum/lib
-rm -rf clarius_cast/include
-rm -rf clarius_cast/lib
-
-# 4. Configure CMake using the system C++ SDK path
-cmake -B build -S . \
-  -Dholoscan_DIR="/opt/nvidia/holoscan/lib/cmake/holoscan" \
-  -DCMAKE_PREFIX_PATH="/opt/nvidia/holoscan;${CONDA_PREFIX}" \
-  -DPYTHON_EXECUTABLE="${PYTHON_EXECUTABLE}"
-
-cmake --build build
-
-popd
-echo "Holoscan Apps build completed!"
+echo "Holoscan installed successfully!"

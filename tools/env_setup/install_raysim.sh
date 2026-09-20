@@ -49,7 +49,7 @@ fi
 cd $ULTRASOUND_RAYTRACING_DIR/ultrasound-raytracing
 
 # --- Hot-patch for scikit-build-core compatibility ---
-if [ -f "pyproject.toml" ]; then
+if grep -q 'cmake.minimum-version' pyproject.toml 2>/dev/null; then
     echo "Patching pyproject.toml CMake version key..."
     sed -i 's/cmake.minimum-version = "3.24.0"/cmake.version = ">=3.24.0"/g' pyproject.toml
 fi

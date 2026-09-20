@@ -38,6 +38,11 @@ FetchContent_MakeAvailable(clarius_solum)
 # Header files
 target_include_directories(pysolum PRIVATE "${clarius_solum_SOURCE_DIR}")
 
+# Link against the Clarius Solum library so its symbols (e.g. solumDefaultInitParams)
+# resolve at import time; libsolum.so is installed next to pysolum.
+target_link_libraries(pysolum PRIVATE "${clarius_solum_SOURCE_DIR}/libsolum.so")
+set_target_properties(pysolum PROPERTIES INSTALL_RPATH "$ORIGIN")
+
 # Installation
 install(DIRECTORY ${clarius_solum_SOURCE_DIR}/solum
         DESTINATION include)

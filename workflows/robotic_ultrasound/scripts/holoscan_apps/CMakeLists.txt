@@ -14,16 +14,9 @@
 # limitations under the License.
 
 cmake_minimum_required(VERSION 3.20)
-project(holoscan_apps CXX)
+project(holoscan_apps)
 
 set(PYBIND11_PYTHON_VERSION 3.11)
 
-# Locate Holoscan SDK configuration
-find_package(holoscan REQUIRED CONFIG)
-
-# Include PyBind11 from Holoscan/Conda
-find_package(pybind11 REQUIRED)
-
-# Force-enable building subdirectories directly
-add_subdirectory(clarius_cast)
-add_subdirectory(clarius_solum)
+add_holohub_application(clarius_cast DEPENDS OPERATORS clarius_cast)
+add_holohub_application(clarius_solum DEPENDS OPERATORS clarius_solum)
