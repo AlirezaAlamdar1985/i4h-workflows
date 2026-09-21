@@ -84,10 +84,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Fix: tensorstore 0.1.81 requires ml_dtypes.float8_e3m4 (added in 0.5.0),
 # but openpi pins ml_dtypes 0.2.0 via tensorflow. --no-deps avoids pulling
 # in newer numpy/jax/jaxlib that would break other packages.
+# Fix: isaaclab does not pin warp-lang, so pip installs the latest (1.17.0), which removed
+# warp.types.array / warp.context that Isaac Sim 5.1 extensions use. Isaac Sim 5.1 needs Warp 1.8.x.
 RUN --mount=type=cache,target=/root/.cache/pip \
     source /opt/miniconda3/bin/activate && \
     conda activate robotic_ultrasound && \
-    pip install --no-deps "ml_dtypes>=0.5.0,<1.0"
+    pip install --no-deps "ml_dtypes>=0.5.0,<1.0" "warp-lang==1.8.1"
 # No "chmod -R a+rX /opt/miniconda3" here: it would copy up the whole conda tree into a
 # new image layer (doubling the image size). pip runs as root with umask 022, so the
 # files it adds are already world-readable.
