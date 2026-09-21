@@ -87,8 +87,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     source /opt/miniconda3/bin/activate && \
     conda activate robotic_ultrasound && \
-    pip install --no-deps "ml_dtypes>=0.5.0,<1.0" && \
-    chmod -R a+rX /opt/miniconda3
+    pip install --no-deps "ml_dtypes>=0.5.0,<1.0"
+# No "chmod -R a+rX /opt/miniconda3" here: it would copy up the whole conda tree into a
+# new image layer (doubling the image size). pip runs as root with umask 022, so the
+# files it adds are already world-readable.
 
 ENV PYTHONPATH=/workspace/i4h-workflows/workflows/robotic_ultrasound/scripts:/workspace/i4h-workflows/install/lib/clarius_solum:/workspace/i4h-workflows/install/lib/clarius_cast
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/workspace/i4h-workflows/install/lib/clarius_solum:/workspace/i4h-workflows/install/lib/clarius_cast
