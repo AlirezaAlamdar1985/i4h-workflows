@@ -72,7 +72,7 @@ docker run --rm --gpus all --runtime=nvidia nvidia/cuda:12.8.1-base-ubuntu24.04 
 ```
 
 `./i4h` starts containers with `--runtime nvidia`, so the runtime must be registered with Docker.
-If `--runtime=nvidia` still fails, see the Troubleshooting section of `README.md` in this folder
+If `--runtime=nvidia` still fails, see the Troubleshooting section of `docker/README.md`
 (`daemon.json` with the nvidia runtime).
 
 Do this section **before** starting the image build. `systemctl restart docker` interrupts a build that is
