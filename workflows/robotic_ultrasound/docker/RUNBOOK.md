@@ -87,7 +87,9 @@ cd i4h-workflows && git checkout docker-v0.5.0
 mkdir -p rti && nano rti/rti_license.dat   # then paste the content and alt-x, yes
 ```
 
-`./i4h` finds the license at `rti/rti_license.dat` and mounts it into the container. The file is
+`./i4h` finds the license at `rti/rti_license.dat` in the repo root (`~/i4h-workflows/rti/`, next to the
+`i4h` script, not in your home directory) and mounts it into the container. To keep it elsewhere, set
+`RTI_LICENSE_FILE=/path/to/rti_license.dat` before running `./i4h`. The file is
 gitignored (`*.dat`).
 
 ## 5. Build the image (about 30 minutes)
@@ -125,6 +127,17 @@ Allow it through the firewall once per VM, before starting anything:
 ufw allow in proto udp to 239.255.0.1 port 7400:7401
 ufw allow out proto udp to 239.255.0.1 port 7400:7401
 ```
+
+By default `./i4h run` rebuilds the container image on every run. Turn that off once, permanently for this VM
+(the CLI reads `HOLOHUB_ALWAYS_BUILD`):
+
+```bash
+echo 'export HOLOHUB_ALWAYS_BUILD=false' >> ~/.bashrc
+source ~/.bashrc
+```
+
+With it set, `--no-docker-build` is no longer needed (the commands below still show it, which is harmless).
+To let the CLI build for a single run, use `HOLOHUB_ALWAYS_BUILD=true ./i4h run ...`.
 
 Then start the workflow:
 
@@ -164,6 +177,7 @@ A process stuck in state `T` (from Ctrl-Z) ignores a plain `kill`. Use `kill -9 
 |---|---|---|
 | `Authorization required, but no authorization protocol specified` from `xdpyinfo` or `vkcube` | SSH shell has no X auth | Set `XAUTHORITY` as in section 2 |
 | Simulation, policy and visualization do not communicate | The firewall blocks the DDS multicast traffic | Allow UDP 7400:7401 to 239.255.0.1 with `ufw` (section 7) |
+| VM freezes, sessions drop, then it reboots (`last -x` shows `crash`) | GPU hang. The previous boot's `journalctl -b -1 -k` shows `NVRM: krcWatchdog_IMPL: RC watchdog: GPU is probably locked!` and `nvidia-modeset: Error while waiting for GPU progress` (seen once on an RTX 5090, driver 580.105.08). `dmesg` alone only covers the current boot | Nothing to fix inside the VM. Watch with `journalctl -k -f \| grep -iE "NVRM\|Xid\|nvidia-modeset"`. If it recurs, rent another host and give the timestamps to Vast.ai support |
 | `Failed to find a graphics and/or presenting queue` (Kit) | The display cannot present Vulkan (`Xvfb` on container templates) | Use the VM template, check with `vkcube` |
 | `can't open file .../utilities/cli/holohub.py` | Unpinned HoloHub CLI downloaded `main`, which moved the CLI into the `holoscan-cli` package (HoloHub #1583, June 2026) | `i4h` pins HoloHub commit `913dcffa7c0f959281e7e4185158ec7c58c5f79f`. Override with `CLI_PINNED_COMMIT=...`. An empty stale `tools/utilities` is only re-downloaded when `CLI_FORCE_UPDATE=1` |
 | `import pysolum`: `undefined symbol: solumDefaultInitParams` | `pysolum` was not linked against `libsolum.so` | `target_link_libraries` and an `$ORIGIN` rpath in `clarius_solum/CMakeLists.txt` |
