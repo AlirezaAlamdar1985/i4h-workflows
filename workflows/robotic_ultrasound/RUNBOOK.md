@@ -13,7 +13,8 @@ Not verified: the Clarius hardware modes, and raysim on cards other than the 509
   Vulkan presenting depends on the host there, so the Isaac Sim window is not reliable.
 - GPU: RTX class, 16 GB VRAM or more (5090 worked). Driver 580 or newer.
 - Disk: **200 GB or more**. The image export peaked at 95% of a 146 GB disk.
-- RAM: 64 GB or more.
+- RAM: 64 GB or more, **as seen inside the VM**. A VM can get much less RAM than the host's listing shows
+  (a listing with 128 GB gave a VM with 24 GB). Check with `free -h` right after it starts.
 
 ## 2. Check display and Docker (2 minutes, before installing anything)
 
@@ -29,6 +30,7 @@ xdpyinfo -display $DISPLAY | grep -i NV-GLX             # want a match
 glxinfo -B | grep "OpenGL renderer"                     # want NVIDIA, not llvmpipe
 vkcube --c 100; echo "exit=$?"                          # want exit=0
 docker info | grep -i "Docker Root Dir"; df -h /
+free -h                                                 # want 64 GB or more of RAM (the VM may get less than the listing says)
 ```
 
 If `vkcube` fails ("Could not find both graphics and present queues") or the renderer is
@@ -185,6 +187,7 @@ A process stuck in state `T` (from Ctrl-Z) ignores a plain `kill`. Use `kill -9 
 |---|---|---|
 | `Authorization required, but no authorization protocol specified` from `xdpyinfo` or `vkcube` | SSH shell has no X auth | Set `XAUTHORITY` as in section 2 |
 | Simulation, policy and visualization do not communicate | The firewall blocks the DDS multicast traffic | Allow UDP 7400:7401 to 239.255.0.1 with `ufw` (section 7) |
+| The policy dies while loading the model: `Loading model from ...` then `Exit code: -9` (or 247 from `docker run`) | The kernel out-of-memory killer. `dmesg -T \| grep -i "killed process"` shows a `python` process at 10 GB or more. The VM had 24 GB of RAM (not the listed 128 GB), and the sim was using memory too | Stop the sim first, add swap (`fallocate -l 32G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`), or rent a VM with 64 GB or more RAM |
 | `[FATAL] The build directory /workspace/i4h/build/robotic_ultrasound ... does not exist` | `HOLOHUB_ALWAYS_BUILD=false` was set before the first run, so the local CMake step that creates that folder was skipped | Run once with `HOLOHUB_ALWAYS_BUILD=true ./i4h run robotic_ultrasound sim_env --as-root --no-docker-build` (section 7) |
 | VM freezes, sessions drop, then it reboots (`last -x` shows `crash`) | GPU hang. The previous boot's `journalctl -b -1 -k` shows `NVRM: krcWatchdog_IMPL: RC watchdog: GPU is probably locked!` and `nvidia-modeset: Error while waiting for GPU progress` (seen once on an RTX 5090, driver 580.105.08). `dmesg` alone only covers the current boot | Nothing to fix inside the VM. Watch with `journalctl -k -f \| grep -iE "NVRM\|Xid\|nvidia-modeset"`. If it recurs, rent another host and give the timestamps to Vast.ai support |
 | `Failed to find a graphics and/or presenting queue` (Kit) | The display cannot present Vulkan (`Xvfb` on container templates) | Use the VM template, check with `vkcube` |

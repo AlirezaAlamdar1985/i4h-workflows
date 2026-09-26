@@ -40,6 +40,81 @@ Suggested budget: three sessions of 30 to 45 minutes, then one full timed run-th
 
 ---
 
+## Helper: exploring the image and searching with grep
+
+### Get a shell inside the image (a throwaway container)
+
+```bash
+# plain shell, nothing else started (changes are lost on exit)
+docker run --rm -it --entrypoint bash i4h_build-robotic_ultrasound:docker-v0-5-0
+
+# same, with your repo mounted and the GPU available
+docker run --rm -it --gpus all --runtime=nvidia --entrypoint bash \
+  -v ~/i4h-workflows:/workspace/i4h i4h_build-robotic_ultrasound:docker-v0-5-0
+
+# copy a folder out to read it in an editor (no shell needed)
+docker create --name tmp i4h_build-robotic_ultrasound:docker-v0-5-0
+docker cp tmp:/workspace/i4h-workflows/third_party/IsaacLab/source ./IsaacLab-source
+docker rm tmp
+```
+
+Leave with `exit`. `python` is already the right one (the conda environment is first on `PATH`). Do not start the model or the sim in an
+exploring shell if RAM is tight.
+
+Where things are inside the image:
+
+| Path | What |
+|---|---|
+| `/workspace/i4h-workflows/` | The repo as built into the image |
+| `/workspace/i4h-workflows/third_party/IsaacLab/` | Isaac Lab (`source/isaaclab/isaaclab/...`) |
+| `/workspace/i4h-workflows/third_party/openpi`, `Isaac-GR00T`, `lerobot`, `i4h-sensor-simulation` | Policy and raysim code |
+| `/opt/miniconda3/envs/robotic_ultrasound/lib/python3.11/site-packages/` | Installed packages (`isaacsim`, `holoscan`, `warp`, ...) |
+
+### Find files by name
+
+```bash
+find /workspace/i4h-workflows/third_party/IsaacLab -name "se3_keyboard.py"     # exact name
+find . -name "*.py" -path "*teleop*"                                            # pattern, limited to a path
+ls -la; ls -R | head -50                                                        # list, recursive list
+```
+
+### grep cheat sheet
+
+Pattern: `grep [options] "text" [where]`. Use `-r` to search folders, `-n` to show line numbers, and always give the folder (use `.` for the current one).
+
+```bash
+grep -rn "replan_steps" .                              # current folder and below
+grep -rn "replan_steps" ~/i4h-workflows/workflows      # a specific folder
+grep -rn "domain_id" --include="*.py" .                # only Python files
+grep -rn "action_dim" --include="*.py" --exclude-dir=__pycache__ .
+grep -rin "chunk_length" .                             # -i: ignore case
+grep -rl "topic_franka_ctrl" .                         # -l: only the file names
+grep -rc "replan" sim_with_dds.py                      # -c: count matching lines in a file
+grep -n -B3 -A3 "replan_steps = 5" sim_with_dds.py     # 3 lines before and after
+grep -rnE "add_callback|Se3Keyboard" .                 # -E: regex, "a or b"
+grep -rnF "policy.infer(" .                            # -F: plain text, special characters are literal
+grep -rn "topic_" --include="*.py" . | head -20        # pipe to head to shorten the output
+```
+
+Options to remember: `-r` recurse, `-n` line numbers, `-i` ignore case, `-l` file names only, `-w` whole word, `-v` lines that do NOT match,
+`-A/-B/-C N` lines of context, `-E` regex, `-F` literal text, `--include="*.py"` and `--exclude-dir=DIR` to narrow the search.
+
+Examples for this workflow (run in `$S`, the scripts folder):
+
+```bash
+grep -rn "class Se3Keyboard" /workspace/i4h-workflows/third_party/IsaacLab/source --include="*.py"    # inside the image
+grep -rn "set_joint_position_target" /workspace/i4h-workflows/third_party/IsaacLab/source --include="*.py"
+grep -rn "topic_franka_ctrl" --include="*.py" $S                                                       # who uses this topic
+```
+
+Tips:
+
+- In your git checkout, `git grep -n "replan_steps"` searches only tracked files and is fast.
+- Quote the pattern (`"..."`) if it has spaces or special characters.
+- Found a hit at `file:LINE`? Open it with `micro +LINE file`.
+
+---
+
 ## Session A: Baseline, and why the screen "freezes" (30 min)
 
 **Read this first: the simulation blocks until the policy answers.**
