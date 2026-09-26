@@ -71,6 +71,9 @@ Drills:
 
 ## Session B: Architecture and code walkthrough (45 min)
 
+Where to explore: work in `workflows/robotic_ultrasound/scripts/`, and go to `third_party/IsaacLab` (in the image, or on the VM)
+only when you need to see what Isaac Lab does for you.
+
 ### The four processes
 
 | Process | Entry point | Role |
@@ -159,6 +162,38 @@ Schemas are generated from IDL and must not be edited by hand.
 - **(verify)** that the policy's action convention matches the teleop one (position delta plus rotation delta). The training
   data conversion is in `scripts/training/convert_hdf5_to_lerobot.py`.
 
+### What the startup log tells you (`teleop_keyboard` mode, real output)
+
+Isaac Lab prints its "managers" when the environment is created. Read them like a spec sheet:
+
+| Manager | What the log shows | Meaning |
+|---|---|---|
+| Action | 1 term, `arm_action`, dimension **6** | 6-D relative end-effector pose command (`action_dim = 6`) |
+| Observation | Group `policy`: `joint_pos_rel` (7), `joint_vel_rel` (7), `object_position` (3), `actions` (6) | The environment's own observations (not concatenated) |
+| Event (mode `reset`) | `reset_scene`, `reset_object_position`, `reset_joint_position` | Reset randomization from `EventCfg` (the "1 active terms" line counts the mode, not the terms) |
+| Reward | `reaching_object` 2.0, `align_ee_handle` 2.5, `alive` 0.1, `action_rate_l2` -0.01, `joint_vel` -0.0001 | Left over from the RL setup. Nothing trains on it here |
+| Command, Recorder, Curriculum, Termination | 0 terms each | No goals, no recording, no curriculum, no automatic termination (episodes end in the script loop) |
+
+Points to be ready to explain:
+
+- **Two kinds of observations.** The environment's group above is 7+7+3+6 = 23 numbers of joint and object state. The policy
+  does **not** use it. It gets two camera images and the joint positions over DDS (`run_policy.py:148`). Camera images are
+  read directly from the scene sensors, not through the observation manager.
+- `joint_pos_rel` has 7 entries: the 7 arm joints only. The ultrasound Panda asset has no fingers.
+- The log also shows startup time (about 16 s here) and one harmless Isaac Lab `UserWarning` about `torch.tensor` at
+  `task_space_actions.py:108`. It also shows Isaac Lab's location in the image: `/workspace/i4h-workflows/third_party/IsaacLab`.
+
+**Keyboard mapping** (printed by Isaac Lab's `Se3Keyboard`, not defined in this repo):
+
+| Keys | Action |
+|---|---|
+| `W` / `S`, `A` / `D`, `Q` / `E` | Move along x, y, z |
+| `Z` / `X`, `T` / `G`, `C` / `V` | Rotate about x, y, z |
+| `K` | Toggle gripper. This robot has no gripper joints, so expect no effect **(verify)** |
+| `L` | Reset the environment. Added by this repo (`teleop_se3_agent.py:345`), so it is not in the printed list |
+
+The six key pairs map onto the six action dimensions. That is the one-line answer to "why 6".
+
 ---
 
 ## Session C: Live-change drills (45 min)
@@ -246,7 +281,7 @@ Answer each out loud in under a minute, with the file to open.
 |---|---|
 | What is Isaac Sim responsible for? | Physics (PhysX), RTX rendering and cameras, robot articulation. Isaac Lab wraps it as a Gym environment (`ManagerBasedRLEnv`) with scene, actions, observations, events |
 | How is the robot represented? | A USD asset (Franka Panda with ultrasound probe and D405 camera) configured as an `ArticulationCfg` in `lab_assets/franka.py` with PD actuators (stiffness 400, damping 80). Driven by an IK action term on the `TCP` frame |
-| What observations does the policy get? | Room RGB, wrist RGB (224x224), the seven arm joint positions, and a text prompt (`run_policy.py:148`) |
+| What observations does the policy get? | Room RGB, wrist RGB (224x224), the seven arm joint positions, and a text prompt (`run_policy.py:148`). Not the environment's own 23-value observation group (see "What the startup log tells you") |
 | What actions does it produce? | A chunk of 50 steps (PI0) of 6-D relative end-effector pose commands. The sim applies the first 5, then re-queries |
 | How does information flow? | The sim publishes on DDS domain 0, blocks, the policy answers on `topic_franka_ctrl`. Visualization data goes on domain 1 |
 | What do the cameras do? | The room and wrist cameras are the policy's eyes. They also feed the visualization. The probe pose drives the ultrasound simulator |

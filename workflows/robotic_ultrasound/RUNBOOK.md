@@ -128,16 +128,24 @@ ufw allow in proto udp to 239.255.0.1 port 7400:7401
 ufw allow out proto udp to 239.255.0.1 port 7400:7401
 ```
 
-By default `./i4h run` rebuilds the container image on every run. Turn that off once, permanently for this VM
-(the CLI reads `HOLOHUB_ALWAYS_BUILD`):
+By default `./i4h run` rebuilds the container image on every run. `HOLOHUB_ALWAYS_BUILD=false` turns that off,
+but it skips **both** the image build **and** the small local CMake step that creates `build/robotic_ultrasound`
+in the repo. The first run needs that step, so do the first run like this (the image build is still skipped by the flag):
+
+```bash
+HOLOHUB_ALWAYS_BUILD=true ./i4h run robotic_ultrasound sim_env --as-root --no-docker-build
+```
+
+Once the sim has started, stop it (`docker stop $(docker ps -q)`) and turn the automatic rebuild off for this VM:
 
 ```bash
 echo 'export HOLOHUB_ALWAYS_BUILD=false' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-With it set, `--no-docker-build` is no longer needed (the commands below still show it, which is harmless).
+From then on `--no-docker-build` is not needed (the commands below still show it, which is harmless).
 To let the CLI build for a single run, use `HOLOHUB_ALWAYS_BUILD=true ./i4h run ...`.
+If you skip the first run, the next one fails with `[FATAL] The build directory .../build/robotic_ultrasound ... does not exist`.
 
 Then start the workflow:
 
@@ -177,6 +185,7 @@ A process stuck in state `T` (from Ctrl-Z) ignores a plain `kill`. Use `kill -9 
 |---|---|---|
 | `Authorization required, but no authorization protocol specified` from `xdpyinfo` or `vkcube` | SSH shell has no X auth | Set `XAUTHORITY` as in section 2 |
 | Simulation, policy and visualization do not communicate | The firewall blocks the DDS multicast traffic | Allow UDP 7400:7401 to 239.255.0.1 with `ufw` (section 7) |
+| `[FATAL] The build directory /workspace/i4h/build/robotic_ultrasound ... does not exist` | `HOLOHUB_ALWAYS_BUILD=false` was set before the first run, so the local CMake step that creates that folder was skipped | Run once with `HOLOHUB_ALWAYS_BUILD=true ./i4h run robotic_ultrasound sim_env --as-root --no-docker-build` (section 7) |
 | VM freezes, sessions drop, then it reboots (`last -x` shows `crash`) | GPU hang. The previous boot's `journalctl -b -1 -k` shows `NVRM: krcWatchdog_IMPL: RC watchdog: GPU is probably locked!` and `nvidia-modeset: Error while waiting for GPU progress` (seen once on an RTX 5090, driver 580.105.08). `dmesg` alone only covers the current boot | Nothing to fix inside the VM. Watch with `journalctl -k -f \| grep -iE "NVRM\|Xid\|nvidia-modeset"`. If it recurs, rent another host and give the timestamps to Vast.ai support |
 | `Failed to find a graphics and/or presenting queue` (Kit) | The display cannot present Vulkan (`Xvfb` on container templates) | Use the VM template, check with `vkcube` |
 | `can't open file .../utilities/cli/holohub.py` | Unpinned HoloHub CLI downloaded `main`, which moved the CLI into the `holoscan-cli` package (HoloHub #1583, June 2026) | `i4h` pins HoloHub commit `913dcffa7c0f959281e7e4185158ec7c58c5f79f`. Override with `CLI_PINNED_COMMIT=...`. An empty stale `tools/utilities` is only re-downloaded when `CLI_FORCE_UPDATE=1` |
