@@ -58,8 +58,10 @@ docker cp tmp:/workspace/i4h-workflows/third_party/IsaacLab/source ./IsaacLab-so
 docker rm tmp
 ```
 
-Leave with `exit`. `python` is already the right one (the conda environment is first on `PATH`). Do not start the model or the sim in an
-exploring shell if RAM is tight.
+Leave with `exit`. In an **interactive** shell, `~/.bashrc` activates conda's `base` environment, which has almost none of the packages
+(so `pip list | grep isaac` finds nothing). Run `conda activate robotic_ultrasound` first, or start the shell with `bash --norc`.
+A non-interactive command (`docker run ... --entrypoint bash -c "..."`) does not read `.bashrc` and already uses the right environment.
+Do not start the model or the sim in an exploring shell if RAM is tight.
 
 Where things are inside the image:
 
@@ -399,8 +401,16 @@ Look for the two `MARKER` lines in the start-up output. Then stop it from anothe
 
 - If both markers appear, every drill below works.
 - If only the first appears, use the **scripts/ drills** (1-6) for the live demo, and only explain the extension drills (7-9).
-  This is also a good debugging story: explain why (editable install points at the image copy) and how you would fix it
-  (add the mounted extension folder to `PYTHONPATH` ahead of the install, or reinstall it in place inside the container).
+  This is also a good debugging story: explain why (the editable install points at the image's own copy) and how you fix it: mount your
+  edited package folder over the image's copy, (confirmed on the VM: `--docker-opts` accepts it, and the marker prints from both the IK config and `franka.py` appeared):
+  ```bash
+  HOST=/root/i4h-workflows/workflows/robotic_ultrasound/scripts/simulation/exts/robotic_us_ext/robotic_us_ext
+  IMG=/workspace/i4h-workflows/workflows/robotic_ultrasound/scripts/simulation/exts/robotic_us_ext/robotic_us_ext
+  ./i4h run robotic_ultrasound sim_env --as-root --no-docker-build --docker-opts="-v $HOST:$IMG"
+  ```
+  Add `--dryrun` first to see that the printed `docker run` contains the `-v`. If the CLI rejects the flag, take the printed `docker run`
+  command, add the `-v` yourself, and run it directly. Use this for drills 7-9 and for any edit under `robotic_us_ext/`
+  (for example the actuator gains in `lab_assets/franka.py`, lines 187-190).
 
 ### Drills in `scripts/` (safe, fast to explain)
 
