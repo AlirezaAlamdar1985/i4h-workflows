@@ -194,6 +194,93 @@ Points to be ready to explain:
 
 The six key pairs map onto the six action dimensions. That is the one-line answer to "why 6".
 
+### How the policy loop works (receding horizon)
+
+The loop, from `sim_with_dds.py:348-373` and `run_policy.py:142-164`:
+
+1. The sim sends the policy its observation: room image, wrist image, 7 joint positions, and a fixed text prompt.
+2. The policy predicts a **chunk of 50 future actions** (PI0; GR00T N1 predicts 16), each a 6-D relative end-effector pose command.
+3. The sim keeps only the **first 5** (`action_plan.extend(action_chunk[:replan_steps])`) and discards the other 45.
+4. It applies one action per `env.step`. When the queue is empty it publishes a fresh observation (step 1) and waits for the next chunk.
+
+Why chunk:
+
+- **Cost.** The README lists PI0 at about 100 ms for 50 actions (RTX 4090) and GR00T N1 at about 92 ms for 16. A 30 Hz step is 33 ms.
+  One inference covers many steps.
+- **Smoothness.** Predicting a short trajectory together tends to be more consistent than one step at a time (general knowledge, not checked in this repo).
+- **Robustness.** Executing 5 of 50 and re-observing stops errors from building up over a long open-loop run.
+
+Is it MPC? The execution scheme is the same (plan ahead, apply the first few, re-observe, re-plan). The differences:
+
+| | MPC | This policy |
+|---|---|---|
+| Plan comes from | An explicit dynamics model plus a cost function, optimized at run time | A neural network forward pass, learned by imitation from demonstrations |
+| "Checking" | Can compare prediction and reality, and handle constraints in the optimization | No comparison. The only feedback is that the next observation produces a brand-new chunk and the old one is dropped |
+| Constraints | Part of the optimization | Left to the IK controller, joint limits, and PD gains. The policy does not see force |
+
+A fair name: *receding-horizon action chunking with a learned policy*.
+
+Details worth knowing: PI0 pads the 7-D state up to the model's action dimension and returns only the first 6 output dimensions
+(`policy/pi0/utils.py`, `Outputs`). GR00T's chunk length comes from `action_indices = list(range(16))` (`policy/gr00tn1/utils.py`).
+
+Demo idea: put a timer around the wait loop (`sim_with_dds.py:354-359`) and print the inference latency. Compare it with the README's 100 ms.
+The sim's clock stops while it waits, so in simulation latency does not matter. On a real robot it does, and you would overlap inference with execution.
+
+Caveat: PI0's internals (its backbone and how it generates actions) live in `openpi`, which is not in this checkout. I have not read it.
+
+### The joint control chain (from action to torque)
+
+The final command to the joints is a **position target**, tracked by a PD drive inside the physics engine. It is not a velocity command
+and not a force command at the interface.
+
+1. **6-D relative pose command** (from the policy or the keyboard), multiplied by the action `scale`
+   (`ik_rel_env_cfg.py:51`, `scale=1.0`).
+2. **IK action term**: `DifferentialInverseKinematicsActionCfg` with `DifferentialIKControllerCfg(command_type="pose",
+   use_relative_mode=True, ik_method="dls")` (damped least-squares IK, controlled body `TCP`). In Isaac Lab 2.3.0
+   (`envs/mdp/actions/task_space_actions.py`, lines 200-211) it computes `joint_pos_des` from the end-effector Jacobian and then calls
+   `self._asset.set_joint_position_target(joint_pos_des, ...)`. The output is 7 joint position targets.
+3. **Implicit PD actuators** (`lab_assets/franka.py`): stiffness 400 and damping 80 on all seven joints for the ultrasound Panda,
+   effort limits 87 N·m (joints 1-4) and 12 N·m (joints 5-7). Isaac Lab passes these gains to PhysX, which integrates the drive itself.
+4. **The PD law** (PhysX 5.4.1 docs, Joints page; OpenUSD `UsdPhysics.DriveAPI`; Isaac Lab's explicit `IdealPDActuator` computes the same,
+   `actuator_pd.py:191`):
+
+   ```
+   force = stiffness * (targetPosition - position) + damping * (targetVelocity - velocity)
+   ```
+
+   Stiffness is the proportional gain (Kp), damping is the derivative-like gain (Kd), and the target velocity is left at zero.
+   There is **no integral term**, so a persistent load leaves a steady-state error. Gravity is disabled for this robot
+   (`disable_gravity=True`), so it does not sag. When the probe presses on the phantom, the contact force is roughly Kp times the position error.
+5. **Timing:** physics at 200 Hz (`sim.dt = 1/200`), one `env.step` every 4 physics steps (`decimation = 4`), so 20 ms of simulated time per step.
+   `episode_length_s = 5` gives 250 steps, which matches `max_timesteps = 250` in `sim_with_dds.py`.
+   The 30 Hz in the scripts is the wall-clock rate of their loops and of the DDS publishers.
+
+Notes and caveats:
+
+- In Isaac Lab 2.3.0, **implicit actuators do not use `velocity_limit`** (the code warns about it). The 2.175 and 2.61 rad/s values in
+  `franka.py` are not what limits the arm's speed. The effort limits, the PD gains, and the size of each IK step are.
+- I assumed the joint drives are the default **force** type. The Panda comes from a remote USD file (`panda_assembly.usda`) that I have not opened.
+  If its drives were the acceleration type, the gains would be scaled by inertia.
+- The formula comes from the public PhysX docs. Isaac Sim 5.1 ships its own PhysX build, but I would expect the same law.
+
+### Background: how the policies get trained (optional, not part of the assignment)
+
+The policies are **supervised imitation learners**: they are fine-tuned to reproduce demonstrated action chunks from images, state, and a prompt. The pipeline in this repo:
+
+1. **Collect demonstrations.** The state machine (setup, approach, contact, scanning, done; with path-planning, orientation, and force modules)
+   drives the robot: `liver_scan_sm --enable_cameras --num_episodes N` (mode `state_machine_scan`). It writes robomimic-style HDF5 files to
+   `./data/hdf5/<date>-<task>` with observations, relative and absolute actions, joint positions, camera RGB and depth, and the state-machine state.
+   The workflow README lists `--record --dataset_path` for teleop, but I found no `record` code in `teleop_se3_agent.py`, so do not demo it **(verify)**.
+2. **Check the data.** Replay it with `replay_recording.py` (mode `replay`).
+3. **Convert.** `training/convert_hdf5_to_lerobot.py` (mode `convert_hdf5`) writes a LeRobot dataset: two 224x224x3 images, a 7-D state, a 6-D action,
+   and the prompt, into `~/.cache/huggingface/lerobot/<repo_id>`. For GR00T add `--feature_builder_type gr00tn1`.
+4. **Train.** `training/pi_zero/train.py --config robotic_ultrasound_lora --exp_name <name>` (mode `train_pi0`; GR00T: `training/gr00t_n1/train.py`).
+   It computes normalization statistics on the first run and starts from the `pi0_base` weights. LoRA needs about 22.5 GB of GPU memory;
+   full fine-tuning needs more than 70 GB. Note that a 16 GB card is too small even for LoRA.
+5. **Evaluate.** `sim_with_dds.py --hdf5_path ... --npz_prefix ...` resets the sim to recorded episodes and saves the trajectories;
+   `simulation/evaluation/evaluate_trajectories.py` (mode `evaluate`) scores them.
+6. **Deploy.** `run_policy.py --ckpt_path <checkpoint or HF repo>`. The DDS interface is unchanged.
+
 ---
 
 ## Session C: Live-change drills (45 min)
@@ -285,6 +372,7 @@ Answer each out loud in under a minute, with the file to open.
 | What actions does it produce? | A chunk of 50 steps (PI0) of 6-D relative end-effector pose commands. The sim applies the first 5, then re-queries |
 | How does information flow? | The sim publishes on DDS domain 0, blocks, the policy answers on `topic_franka_ctrl`. Visualization data goes on domain 1 |
 | What do the cameras do? | The room and wrist cameras are the policy's eyes. They also feed the visualization. The probe pose drives the ultrasound simulator |
+| What is the final command to the joints? | Joint **position targets** from a damped least-squares IK controller, tracked by a PD drive in PhysX (stiffness 400, damping 80, effort limits 87 and 12 N·m). Not a velocity or force command at the interface. See "The joint control chain" |
 | How is communication implemented? | RTI Connext DDS with the Python API: IDL-generated schemas, `Publisher` and `Subscriber` wrappers, 30 Hz, two domains. Needs a license and multicast allowed in the firewall (UDP 7400-7401 to 239.255.0.1) |
 | Where would you add a different robot? | New asset in `lab_assets/`, a new env cfg like `ik_rel_env_cfg.py` (actions, cameras), register the task in `config/.../__init__.py`, adjust the joint counts (`joint_pos[:7]`, action dims) |
 | A different environment? | `RoboticSoftCfg` in `franka_manager_rl_env_cfg.py` (scene assets, paths in `simulation/utils/assets.py`) |
