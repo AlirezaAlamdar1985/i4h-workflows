@@ -318,6 +318,10 @@ and not a force command at the interface.
    `self._asset.set_joint_position_target(joint_pos_des, ...)`. The output is 7 joint position targets.
 3. **Implicit PD actuators** (`lab_assets/franka.py`): stiffness 400 and damping 80 on all seven joints for the ultrasound Panda,
    effort limits 87 N·m (joints 1-4) and 12 N·m (joints 5-7). Isaac Lab passes these gains to PhysX, which integrates the drive itself.
+   Where these values come from in `lab_assets/franka.py`: the ultrasound robot (`FRANKA_PANDA_REALSENSE_ULTRASOUND_CFG`, line 169) starts as a
+   copy of the default no-hand Panda `NOHAND_FRANKA_PANDA` (lines 98-141: initial joints 113-123, effort limits 127 and 134, gains 80/4 at
+   129-130 and 136-137). The gains are overwritten with 400/80 in **lines 187-190**, and the whole `spawn` (USD, gravity off, contact sensors)
+   is replaced at **lines 171-186**. Effort limits and initial joint positions are not overwritten, so edit them at their original lines.
 4. **The PD law** (PhysX 5.4.1 docs, Joints page; OpenUSD `UsdPhysics.DriveAPI`; Isaac Lab's explicit `IdealPDActuator` computes the same,
    `actuator_pd.py:191`):
 
