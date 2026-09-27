@@ -473,16 +473,21 @@ Answer each out loud in under a minute, with the file to open.
 
 ## Session E: Timed run-through (20 min)
 
+This outline is shaped for the actual review audience (see "Job-fit gaps to address" below): more airtime for the
+articulation/joint-control chain, and one deliberate moment connecting this demo to their domain, rather than
+waiting to be asked.
+
 Practice the whole thing once, with a timer:
 
 | Time | Content |
 |---|---|
-| 0:00 | One slide: architecture diagram (the Mermaid chart above, redrawn) and the data flow in three sentences |
+| 0:00 | Scope-framing sentence, then one slide: architecture diagram (the Mermaid chart above, redrawn) and the data flow in three sentences. Framing line: "This demonstrates an existing Isaac Sim workflow end to end — I'll flag where it matches what you're building toward, and where it doesn't." |
 | 2:00 | Live: bring up the full pipeline. Point out the four windows |
-| 5:00 | Code walkthrough: `sim_with_dds.py` loop, `run_policy.py` callback, DDS wrappers, env cfg |
+| 5:00 | Code walkthrough, with **extra time on the articulation controller**: `sim_with_dds.py` loop, `run_policy.py` callback, DDS wrappers, env cfg, then the joint control chain (IK action term to PhysX PD drive, stiffness/damping as Kp/Kd, effort limits) |
 | 10:00 | Live changes: drills 2 and 3, plus one break-and-fix |
-| 15:00 | Troubleshooting stories (below) |
-| 18:00 | Where I would extend it, and the Jetson / DGX Spark split |
+| 12:00 | **Job-fit bridge** (three rehearsed sentences, see below): DDS vs ROS2, USD assets already authored vs CAD import, rigid-body organ vs tissue-cutting physics |
+| 15:00 | Troubleshooting stories (below), leading with the two that show judgement under ambiguity (GPU hang, Vulkan/Xvfb) |
+| 18:00 | Where I would extend it for a different robot/environment/sensor, pointed at Mako-shaped changes, then the Jetson / DGX Spark split |
 
 **Troubleshooting stories to have ready** (issue, diagnosis, resolution, what next):
 1. Warp version mismatch broke Isaac Sim extensions (`warp.types` errors). `pip show warp-lang` traced it to an unpinned `isaaclab` dependency. Pinned 1.8.1.
@@ -491,6 +496,34 @@ Practice the whole thing once, with a timer:
 4. HoloHub CLI broke (`holohub.py` missing). Upstream restructured. Pinned the release-era commit.
 5. Sim "freezes" with the GPU idle. It blocks until the policy replies (firewall for DDS, or the policy not running).
 6. VM crash from a GPU hang. Found in the previous boot's kernel log (`journalctl -b -1 -k`).
+
+---
+
+## Job-fit gaps to address
+
+This assignment demonstrates an *existing* Isaac Sim workflow. The role is *building* a new one, for a different
+robot (Mako), with real tissue physics and ROS2 integration. Expect the panel to probe past the assignment into
+these gaps. Name them before they're caught, rather than let the panel infer them.
+
+| Their responsibility | What this demo has | What to say |
+|---|---|---|
+| Articulation controller, joint positions | The full IK-to-PD chain (see "The joint control chain"). This is the strongest overlap — lead with it | How I'd switch to direct joint-position/velocity control instead of IK-relative pose, if their controller expects that: swap the action term in `ActionsCfg` |
+| "Connect to ROS2, use existing functionality" | RTI Connext **DDS** directly (custom Python pub/sub, not ROS2) | DDS is ROS2's own middleware, so domains/topics/QoS/discovery concepts transfer. I'd use `ros2_control` or Isaac Sim's ROS2 bridge instead of hand-rolled publishers |
+| Migrate assets via Isaac Sim's import/scene tools | Assets are already Isaac-native USD (`UsdFileCfg`, `usd_path` to pre-built files). No CAD import done here | The general path: CAD/URDF to USD via Isaac Sim's importer, then author an `ArticulationCfg` (joints, actuators, gains) the way `lab_assets/franka.py` does for this robot |
+| Tool-tissue interaction, bone resection | The organ is a **rigid body** (`RigidObjectCfg`), contact only, no cutting or deformation | Name the direction honestly: PhysX deformable/FEM soft-body simulation. Real-time bone resection is a hard, largely open research problem, not something implicit rigid-body PD drives do |
+| OR layout, access, collision, workflow studies | Not in scope here: single robot, single task, fixed scene | Isaac Sim's scene graph and collision APIs could support this; this demo doesn't exercise it. Say so rather than imply it does |
+| Sensor integration | Cameras plus the ultrasound ray-tracing (Holoscan/raysim) is a real, working example | Generalize the pattern: a sensor cfg in the env, read it in the sim loop, a DDS schema, a publisher (Session D table) |
+| Edge computing | Not built, but the DDS separation between sim and policy answers it directly | Lead with the Jetson/DGX Spark answer already in Session D |
+
+**The job-fit bridge (three sentences, say near 12:00, unprompted):**
+1. "This workflow talks over RTI DDS directly, not ROS2 — but DDS is the middleware ROS2 itself uses, so I'd bridge it with `ros2_control` or Isaac's ROS2 bridge rather than the hand-rolled publishers here."
+2. "The assets here are already Isaac-native USD; bringing in Mako would mean the CAD-to-USD import path and authoring a new `ArticulationCfg`, which I haven't done but understand from how `franka.py` is structured."
+3. "The organ here is a rigid body for contact only — tissue cutting would need PhysX deformable or FEM simulation, which is a materially harder, less mature problem than anything in this demo."
+
+**Framing for the whole conversation:** this is a controlled demo of an existing workflow; the role is building a new
+one for a harder problem. The strongest move is clearly separating "what I demonstrated and verified" from "what I
+understand conceptually and would still need to build." That distinction is what their seniority language
+("evaluative judgement... complex and dynamic material") is actually asking you to show.
 
 ---
 
