@@ -181,34 +181,37 @@ docker kill $(docker ps -q)               # forced, all running containers
 
 A process stuck in state `T` (from Ctrl-Z) ignores a plain `kill`. Use `kill -9 <PID>`.
 
-## Suppressing noisy per-cycle logging (e.g. the ultrasound ray-tracing example)
+## Noisy per-cycle logging from the ultrasound ray-tracing example, and the `ultrasound` mode
 
 `simulation.examples.ultrasound_raytracing` prints spdlog `[info]` timing lines every cycle (`Timing OptiX took ...`,
-`Timing Simulation took ...`, `Simulation completed successfully`). These come from a vendored C++ library
-(`third_party/i4h-sensor-simulation`) that calls `spdlog::info(...)` unconditionally, with no exposed level control
-and no `SPDLOG_LEVEL` support wired in — an environment variable will not suppress them, and there is no Python
-setter (checked `dir(raysim.cuda)`). Fixing it at the source means patching the C++ and rebuilding raysim, which is
-not worth it for output filtering.
+`Timing Simulation took ...`, `Simulation completed successfully`, `Starting simulation`). These come from a vendored
+C++ library (`third_party/i4h-sensor-simulation`) that calls `spdlog::info(...)` unconditionally, with no exposed
+level control and no `SPDLOG_LEVEL` support wired in — an environment variable will not suppress them, and there is
+no Python setter (checked `dir(raysim.cuda)`). Fixing it at the source means patching the C++ and rebuilding raysim,
+which is not worth it for output filtering.
 
-Instead, filter the command in `metadata.json`. Add a new mode (or edit an existing one's `run.command`) to pipe
-the script through `grep`:
+Instead, `metadata.json` has an **`ultrasound`** mode that pipes the script through `grep` to drop the noise:
 
-```json
-"ultrasound": {
-  "description": "Ultrasound imaging",
-  "run": {
-    "command": "bash -c \"python -m simulation.examples.ultrasound_raytracing 2>&1 | grep --line-buffered -Ev 'Timing|Simulation completed|Starting Simulation'\"",
-    "workdir": "holohub_app_source",
-    "env": { "PYTHONPATH": "<holohub_app_source>/scripts:<PYTHONPATH>" }
-  }
-}
+```bash
+./i4h run robotic_ultrasound ultrasound --as-root --no-docker-build
 ```
 
-Two things that will bite you in `metadata.json`:
+`metadata.json` is read live from the mounted repo at run time (same as `scripts/`, not baked into the image), so
+this mode is already available on any clone of this branch — no manual JSON editing needed. If you ever add or
+change a mode like this yourself, three things will bite you in `metadata.json`:
 
 - **JSON escaping.** A literal backslash in a JSON string must be `\\`, and the outer shell wrapper needs double
   quotes (`bash -c \"...\"`) so the `grep` pattern can keep single quotes inside it. Prefer `-E` (extended regex)
   with `|` as plain alternation over `-v 'a\|b'`, so there is only one thing to escape (the JSON `\\`), not two.
+- **`--run-args` silently breaks under a `bash -c` wrapper unless you forward it.** The CLI builds argv by
+  `shlex.split`-ting the whole `command` string and then *appending* the `--run-args` tokens to that list. For a
+  plain `command` (`"python -m foo"`) this lands directly in Python's argv and just works. But once the command is
+  wrapped as `bash -c "<script>"`, any tokens appended after it become bash's own positional parameters (`$0`,
+  `$1`, ...) instead of being inserted into `<script>` — they reach `bash`, never `python`, and are silently
+  dropped. The fix is the `\"$@\"` and trailing `bash` in the command above: the trailing `bash` consumes the `$0`
+  slot so `"$@"` (i.e. `$1 $2 ...`) is exactly the appended `--run-args` tokens, forwarded into the `python` call
+  in order, with word-splitting preserved. Any mode command that needs a shell feature (`|`, `2>&1`, `&&`, ...)
+  *and* needs to accept `--run-args` needs this same `\"$@\"` bash wrapper trick, not just this one.
 - **Validate before running `./i4h`**, much faster feedback than the CLI's own parser:
   ```bash
   python3 -m json.tool workflows/robotic_ultrasound/metadata.json > /dev/null && echo "valid JSON"
@@ -218,6 +221,15 @@ Two things that will bite you in `metadata.json`:
 
 Never redirect the whole stream to `/dev/null`: `grep -v`/`-Ev` only drops the matched noise and still surfaces a
 real crash.
+
+Example, once this is in place:
+
+```bash
+./i4h run robotic_ultrasound ultrasound --as-root --no-docker-build                             # filtered, no args
+./i4h run robotic_ultrasound ultrasound --as-root --no-docker-build --run-args="--height 128 --width 128"
+./i4h run robotic_ultrasound ultrasound --as-root --no-docker-build --run-args="--domain_id 5"   # wrong domain: no probe input arrives
+./i4h run robotic_ultrasound ultrasound --as-root --no-docker-build --run-args="--test"          # local smoke test, no DDS needed
+```
 
 ## Problems met and their fixes
 

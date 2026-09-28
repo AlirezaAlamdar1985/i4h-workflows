@@ -119,6 +119,16 @@
           }
         }
       },
+      "ultrasound": {
+        "description": "Ultrasound ray-tracing simulation only, with per-cycle spdlog timing lines filtered out. Accepts --run-args (e.g. --height, --width, --domain_id, --test) via a \"$@\" bash wrapper.",
+        "run": {
+          "command": "bash -c \"python -m simulation.examples.ultrasound_raytracing \\\"$@\\\" 2>&1 | grep --line-buffered -Ev 'Timing|Simulation completed|Starting simulation'\" bash",
+          "workdir": "holohub_app_source",
+          "env": {
+            "PYTHONPATH": "<holohub_app_source>/scripts:<PYTHONPATH>"
+          }
+        }
+      },
       "state_machine_scan": {
         "description": "Automated liver scanning using state machine",
         "run": {
