@@ -143,6 +143,7 @@ venv.bak/
 **/pi_zero/checkpoints/
 **/pi_zero/wandb/
 **/data/hdf5/
+/data/
 
 # Spyder project settings
 .spyderproject
@@ -245,3 +246,4 @@ rti/
 .python_history
 .nv
 .keras
+/holohub/
