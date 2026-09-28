@@ -1,8 +1,8 @@
 # Problems Encountered and Resolutions
 
-Six issues hit while setting up and running the Robotic Ultrasound workflow. Each is stated as: what the issue
+Five issues hit while setting up and running the Robotic Ultrasound workflow. Each is stated as: what the issue
 was, how it was diagnosed, how it was resolved, and what would be investigated next if it could not have been
-resolved. The six code/config fixes these produced are listed together in `SETUP.md`; this document is the
+resolved. The code/config fixes these produced are listed together in `SETUP.md`; this document is the
 debugging narrative behind them.
 
 ## 1. Warp version mismatch broke Isaac Sim's extensions
@@ -66,36 +66,20 @@ workflow's release was cut, so the workflow's unpinned download was fetching inc
 **Next if unresolved:** Vendor the specific CLI files this workflow actually needs directly into the repository,
 rather than downloading them at run time, so a future upstream restructuring cannot break it again.
 
-## 5. The simulation appeared to "freeze," with GPU usage dropping to zero
+## 5. The ultrasound ray-tracing simulator failed to build
 
-**Issue:** After starting the simulation, the robot would move briefly, then stop entirely, with GPU utilization
-falling to zero and no further activity.
+**Issue:** Installing the ultrasound ray-tracing component (a pinned third-party release) failed during its
+Python package build, with `ERROR: Use cmake.version instead of cmake.minimum-version with scikit-build-core >= 0.8`.
 
-**Diagnosis:** Reading the simulation's control loop showed it deliberately blocks, waiting for a reply from the
-policy process over DDS, whenever it has no queued actions left to execute — this is correct behavior when no
-policy is running, when a firewall is blocking the DDS network traffic, or while the policy is still loading its
-model checkpoint, and is easy to mistake for a crash.
+**Diagnosis:** The pinned release's build configuration was written against an older version of the
+`scikit-build-core` build backend, which used a `cmake.minimum-version` key. The current version of that backend,
+resolved fresh at install time (it is not itself pinned), rejects that key outright in favor of a renamed
+`cmake.version` key.
 
-**Resolution:** Opened the required firewall ports for DDS's multicast traffic and confirmed the policy process
-was actually running.
+**Resolution:** Patched the one affected line in that build configuration (`cmake.minimum-version` →
+`cmake.version`) as part of the install step, applied only when the old key is still present so the patch stays
+harmless if the pinned release is ever updated.
 
-**Next if unresolved:** Run both processes in verbose mode and inspect the relevant DDS topic's traffic directly
-(a DDS monitoring tool, or a packet capture on the multicast address) to confirm messages are actually reaching
-the network, and check for a mismatched DDS domain ID between the two processes.
-
-## 6. A rented VM crashed and rebooted mid-session
-
-**Issue:** An SSH session and the remote desktop both became unresponsive, and the instance later showed signs of
-having restarted.
-
-**Diagnosis:** The current boot's kernel log showed nothing relevant — the crash had happened during the
-*previous* boot, whose log had to be checked separately, since it does not appear in the default log view. That
-log showed repeated GPU watchdog timeout messages immediately before the crash, indicating a GPU hardware/driver
-hang rather than, for example, an out-of-memory condition or a clean shutdown.
-
-**Resolution:** None available from inside the VM. Work continued on the same instance once it came back up; the
-underlying cause (host, driver, or hardware) was never established.
-
-**Next if unresolved:** This is the one issue without a real resolution. The next step would be reporting the
-exact timestamps and kernel log contents to the hosting provider's support team, and renting a different
-instance — a GPU hardware/driver hang is not something fixable from inside a guest VM.
+**Next if unresolved:** Pin `scikit-build-core` itself to a version compatible with the old key, rather than
+patching the third-party release's configuration; or report the incompatibility upstream to that release's
+maintainers, since the underlying dependency (raysim) is not part of this repository.

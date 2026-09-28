@@ -530,7 +530,9 @@ Practice the whole thing once, with a timer:
 **Troubleshooting stories to have ready** (issue, diagnosis, resolution, what next). Pick 1-2 for the live walkthrough
 (the assignment asks for "at least one or two"); the Warp story and the GPU-idle/DDS story are the strongest —
 Warp shows a full diagnose-to-fix cycle with a clear root cause, and the GPU-idle one directly explains a real
-behavior you will show live in section 3. Keep the rest in reserve for Q&A.
+behavior you will show live in section 3. Keep the rest in reserve for Q&A. `PROBLEMS.md` has one more not listed
+here (a raysim build failure from a stale build-system key) — kept out of this live-prep list since it is not one
+of the two to lead with, but mention it if asked "any others?"
 
 1. **Warp version mismatch broke Isaac Sim extensions** (`AttributeError: module 'warp.types' has no attribute
    'array'`, on Kit startup). Diagnosed with `pip show warp-lang` inside the image, which traced it to an unpinned
