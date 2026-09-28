@@ -7,6 +7,24 @@ Steps that worked to build the Docker image and run the Robotic Ultrasound workf
 Verified: `sim_env` and the full pipeline run on an RTX 5090 (driver 580.105).
 Not verified: the Clarius hardware modes, and raysim on cards other than the 5090.
 
+## Changes from v0.5.0 (complete list)
+
+Everything this branch (`docker-v0.5.0`) changes relative to the `v0.5.0` tag, from `git diff v0.5.0..HEAD --stat`
+(excluding this runbook and `REHEARSAL.md` themselves). Six files. This answers the assignment's "document any
+compatibility or configuration issues you encounter."
+
+| File | Change | Why |
+|---|---|---|
+| `i4h` | `CLI_PINNED_COMMIT` now defaults to HoloHub commit `913dcffa7c0f959281e7e4185158ec7c58c5f79f` (the commit just before the `v0.5.0` release, 2026-03-13) instead of empty/`main` | An unpinned `./i4h` pulls HoloHub `main`, which later moved the CLI out of `utilities/cli/holohub.py` into a separate `holoscan-cli` package (upstream #1583). With `main`, `./i4h list`/`run`/`modes` fail outright (`can't open file .../holohub.py`) |
+| `tools/env_setup/install_raysim.sh` | Patches raysim v0.4.0's `pyproject.toml`: `cmake.minimum-version` → `cmake.version` (guarded, only if the old key is present) | v0.4.0 uses a `scikit-build-core` key that `scikit-build-core >= 0.8` rejects (`ERROR: Use cmake.version instead of cmake.minimum-version`), so `pip install -e .` fails at "Getting requirements to build editable" |
+| `workflows/robotic_ultrasound/docker/Dockerfile` | (1) Pins `warp-lang==1.8.1` alongside the existing `ml_dtypes` pip step. (2) Removed the second `chmod -R a+rX /opt/miniconda3` after that step | (1) `isaaclab` does not pin `warp-lang`, so pip resolved 1.17.0, which removed `warp.types.array`/`warp.context` that Isaac Sim 5.1's extensions (`isaacsim.core.*`, `omni.replicator.core`, `omni.warp`) import — Kit failed to start with `AttributeError: module 'warp.types' has no attribute 'array'`. (2) That `chmod` copied the entire conda tree into a new image layer (doubling image size), which caused `no space left on device` during the image export |
+| `workflows/robotic_ultrasound/metadata.json` | Added a new `ultrasound` mode: runs `simulation.examples.ultrasound_raytracing` with its per-cycle spdlog `[info]` lines (`Timing ...`, `Starting simulation`, `Simulation completed`) filtered out via `grep`, and forwards `--run-args` correctly through the `bash -c` wrapper via `"$@"` | The vendored raysim C++ library (`third_party/i4h-sensor-simulation`) logs unconditionally at `info` level every cycle, with no exposed level control and no `SPDLOG_LEVEL` support — filtering the command's output was the practical fix. (`--run-args` needed the `"$@"` forwarding fix separately: appending args after a `bash -c "..."` command lands them on bash's own positional parameters, never reaching Python, unless the script explicitly forwards them) |
+| `.../holoscan_ops/operators/clarius_solum/CMakeLists.txt` | Added `target_link_libraries(pysolum PRIVATE .../libsolum.so')` and an `$ORIGIN` `INSTALL_RPATH` | `pysolum` (the Clarius Solum Python binding) wasn't linked against `libsolum.so`, so `import pysolum` failed with `undefined symbol: solumDefaultInitParams` |
+| `.gitignore` | Added `/data/`, `/holohub/` | `/data/` for HDF5 recordings written to the repo root by the state machine/teleop data collector (hundreds of MB each). `/holohub/` for a local HoloHub clone that isn't part of the pinned CLI |
+
+Everything else in this branch is documentation (this file, `REHEARSAL.md`) or data conversion tooling
+(`data/hdf5_to_csv.py`) — no other source files differ from `v0.5.0`.
+
 ## 1. Rent
 
 - Template: **Ubuntu Desktop (VM)**. The container-based desktop templates run an `Xvfb` display, and
@@ -25,6 +43,8 @@ The file name changes on every boot.
 export DISPLAY=:0                                       # check `ls /tmp/.X11-unix` if this fails
 export XAUTHORITY=$(ls -d /var/run/sddm/{* | head -1)   # or take the path after -auth from: ps aux | grep [X]org
 nvidia-smi                                              # want Xorg in the Processes list, type G
+export NEEDRESTART_MODE=a                               # suppress the "pending kernel upgrade" dialog on apt installs below
+echo 'export NEEDRESTART_MODE=a' >> ~/.bashrc
 apt-get update && apt-get install -y x11-utils mesa-utils vulkan-tools tmux
 xdpyinfo -display $DISPLAY | grep -i NV-GLX             # want a match
 glxinfo -B | grep "OpenGL renderer"                     # want NVIDIA, not llvmpipe

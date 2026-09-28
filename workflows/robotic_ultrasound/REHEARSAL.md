@@ -230,6 +230,26 @@ Schemas are generated from IDL and must not be edited by hand.
    - It runs at a fixed 30 Hz and does **not** wait for anything. It publishes camera and probe data for visualization only.
    - The keyboard help is printed at startup. `L` resets the environment.
 
+### Teleop data flow (`teleop_with_ultrasound` mode — the section-2 demo)
+
+```mermaid
+flowchart LR
+  KB["Keyboard<br/>(you)"] -- "key events via the Isaac Sim window" --> SIM
+  subgraph SIM["teleop_se3_agent.py (Isaac Sim + Isaac Lab)"]
+    DEV["Se3Keyboard<br/>advance() gives a 6-D delta pose"] --> ENV["env.step(action)<br/>IK action term"]
+  end
+  ENV -- "domain 1: cameras RGB + depth, probe pose" --> VIZ["Visualization"]
+  ENV -- "domain 1: topic_ultrasound_info" --> US["Ultrasound raytracing"]
+  US -- "domain 1: topic_ultrasound_data" --> VIZ
+```
+
+The keyboard command is **not** sent over DDS — it never leaves the sim process. `Se3Keyboard.advance()` reads key
+events straight from the Isaac Sim window and turns them into the same 6-D relative end-effector pose that
+`env.step()` takes from the policy in the other mode. DDS (domain 1) only carries the *visualization* data outward:
+camera feeds, probe pose, and the ultrasound image. This is the mode planned for the section-2 live demo/recording —
+it hits every sub-bullet of "run the simulation" in one running process: robot interaction (the keyboard), cameras/
+sensors (room + wrist feeds), and the ultrasound environment (the simulated B-mode image itself).
+
 ### Manual control vs policy control (the assignment asks for this)
 
 - Both end up as a **6-D relative end-effector pose command** into the same Isaac Lab IK action term.
