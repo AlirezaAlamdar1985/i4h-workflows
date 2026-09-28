@@ -181,12 +181,51 @@ docker kill $(docker ps -q)               # forced, all running containers
 
 A process stuck in state `T` (from Ctrl-Z) ignores a plain `kill`. Use `kill -9 <PID>`.
 
+## Suppressing noisy per-cycle logging (e.g. the ultrasound ray-tracing example)
+
+`simulation.examples.ultrasound_raytracing` prints spdlog `[info]` timing lines every cycle (`Timing OptiX took ...`,
+`Timing Simulation took ...`, `Simulation completed successfully`). These come from a vendored C++ library
+(`third_party/i4h-sensor-simulation`) that calls `spdlog::info(...)` unconditionally, with no exposed level control
+and no `SPDLOG_LEVEL` support wired in — an environment variable will not suppress them, and there is no Python
+setter (checked `dir(raysim.cuda)`). Fixing it at the source means patching the C++ and rebuilding raysim, which is
+not worth it for output filtering.
+
+Instead, filter the command in `metadata.json`. Add a new mode (or edit an existing one's `run.command`) to pipe
+the script through `grep`:
+
+```json
+"ultrasound": {
+  "description": "Ultrasound imaging",
+  "run": {
+    "command": "bash -c \"python -m simulation.examples.ultrasound_raytracing 2>&1 | grep --line-buffered -Ev 'Timing|Simulation completed|Starting Simulation'\"",
+    "workdir": "holohub_app_source",
+    "env": { "PYTHONPATH": "<holohub_app_source>/scripts:<PYTHONPATH>" }
+  }
+}
+```
+
+Two things that will bite you in `metadata.json`:
+
+- **JSON escaping.** A literal backslash in a JSON string must be `\\`, and the outer shell wrapper needs double
+  quotes (`bash -c \"...\"`) so the `grep` pattern can keep single quotes inside it. Prefer `-E` (extended regex)
+  with `|` as plain alternation over `-v 'a\|b'`, so there is only one thing to escape (the JSON `\\`), not two.
+- **Validate before running `./i4h`**, much faster feedback than the CLI's own parser:
+  ```bash
+  python3 -m json.tool workflows/robotic_ultrasound/metadata.json > /dev/null && echo "valid JSON"
+  ```
+  A broken `metadata.json` fails as `ERROR:...gather_metadata:Error parsing JSON file ...` followed by
+  `[FATAL] Project 'robotic_ultrasound' ... not found` — a confusing symptom if you do not already suspect the JSON.
+
+Never redirect the whole stream to `/dev/null`: `grep -v`/`-Ev` only drops the matched noise and still surfaces a
+real crash.
+
 ## Problems met and their fixes
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `Authorization required, but no authorization protocol specified` from `xdpyinfo` or `vkcube` | SSH shell has no X auth | Set `XAUTHORITY` as in section 2 |
 | Simulation, policy and visualization do not communicate | The firewall blocks the DDS multicast traffic | Allow UDP 7400:7401 to 239.255.0.1 with `ufw` (section 7) |
+| `ERROR:...gather_metadata:Error parsing JSON file ...` then `[FATAL] Project '...' not found` | Invalid JSON in `metadata.json`, often a bad escape (a bare `\|` instead of `\\|`) after adding/editing a mode's `command` | `python3 -m json.tool workflows/robotic_ultrasound/metadata.json` to find the exact line; see "Suppressing noisy per-cycle logging" for a worked example |
 | The policy dies while loading the model: `Loading model from ...` then `Exit code: -9` (or 247 from `docker run`) | The kernel out-of-memory killer. `dmesg -T \| grep -i "killed process"` shows a `python` process at 10 GB or more. The VM had 24 GB of RAM (not the listed 128 GB), and the sim was using memory too | Stop the sim first, add swap (`fallocate -l 32G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`), or rent a VM with 64 GB or more RAM |
 | `[FATAL] The build directory /workspace/i4h/build/robotic_ultrasound ... does not exist` | `HOLOHUB_ALWAYS_BUILD=false` was set before the first run, so the local CMake step that creates that folder was skipped | Run once with `HOLOHUB_ALWAYS_BUILD=true ./i4h run robotic_ultrasound sim_env --as-root --no-docker-build` (section 7) |
 | VM freezes, sessions drop, then it reboots (`last -x` shows `crash`) | GPU hang. The previous boot's `journalctl -b -1 -k` shows `NVRM: krcWatchdog_IMPL: RC watchdog: GPU is probably locked!` and `nvidia-modeset: Error while waiting for GPU progress` (seen once on an RTX 5090, driver 580.105.08). `dmesg` alone only covers the current boot | Nothing to fix inside the VM. Watch with `journalctl -k -f \| grep -iE "NVRM\|Xid\|nvidia-modeset"`. If it recurs, rent another host and give the timestamps to Vast.ai support |
