@@ -481,6 +481,7 @@ Answer each out loud in under a minute, with the file to open.
 | What actions does it produce? | A chunk of 50 steps (PI0) of 6-D relative end-effector pose commands. The sim applies the first 5, then re-queries |
 | How does information flow? | The sim publishes on DDS domain 0, blocks, the policy answers on `topic_franka_ctrl`. Visualization data goes on domain 1 |
 | What do the cameras do? | The room and wrist cameras are the policy's eyes. They also feed the visualization. The probe pose drives the ultrasound simulator |
+| Is the ultrasound image just another camera? | No. It is not an Isaac Sim `CameraCfg` or part of Isaac Sim's rendering pipeline at all. It is a separate ray-tracing simulator (raysim, run inside a Holoscan app) that consumes only the probe's pose, published over DDS (`topic_ultrasound_info`), and synthesizes the B-mode image from the phantom's mesh geometry (OptiX ray tracing plus a PSF/time-gain/envelope/scan-conversion pipeline). It never reads Isaac Sim's rendered pixels |
 | What is the final command to the joints? | Joint **position targets** from a damped least-squares IK controller, tracked by a PD drive in PhysX (stiffness 400, damping 80, effort limits 87 and 12 N·m). Not a velocity or force command at the interface. See "The joint control chain" |
 | How is communication implemented? | RTI Connext DDS with the Python API: IDL-generated schemas, `Publisher` and `Subscriber` wrappers, 30 Hz, two domains. Needs a license and multicast allowed in the firewall (UDP 7400-7401 to 239.255.0.1) |
 | Where would you add a different robot? | New asset in `lab_assets/`, a new env cfg like `ik_rel_env_cfg.py` (actions, cameras), register the task in `config/.../__init__.py`, adjust the joint counts (`joint_pos[:7]`, action dims) |
@@ -488,6 +489,23 @@ Answer each out loud in under a minute, with the file to open.
 | A different sensor? | Add the sensor cfg in the env cfg, capture it in `sim_with_dds.py`, add a publisher, and a schema in `dds/schemas/` |
 | A different policy? | New runner in `policy/<name>/runners.py` with `infer(...)`, one branch in `run_policy.py`. The DDS interface stays the same |
 | How would you run the sim on a workstation and the policy on a Jetson or DGX Spark? | DDS already separates them. Run `run_policy.py` on the other device on the same domain, and make sure discovery works across the network (multicast, or explicit peers in RTI). Two 224x224x3 images at 30 Hz is about 9 MB/s (more while the sim re-publishes during its wait), so a LAN is fine. Watch latency (the sim blocks on each inference) and whether the model fits the device's memory |
+
+---
+
+## Extending the system (where I would modify it)
+
+Covers assignment section 4's last bullet ("where would you modify the system for a different robot, environment,
+sensor, or policy") at two levels: the generic repo-pointer answer, then what that looks like for a real robot like
+Mako (see also "Job-fit gaps to address" below, which this overlaps with — say each point once, not twice).
+
+| To add... | Generic answer (this repo) | For a robot like Mako |
+|---|---|---|
+| **A different robot** | New asset config in `lab_assets/` (`ArticulationCfg`: USD path, actuator gains, effort limits, initial joint positions — the pattern in `franka.py`), a new env cfg like `ik_rel_env_cfg.py` (action term, cameras), register the task in `config/.../__init__.py`, adjust joint counts (`joint_pos[:7]`, action dims) throughout the DDS-facing scripts | The asset itself does not exist as Isaac-native USD yet: CAD/URDF → USD via Isaac Sim's importer, then author the `ArticulationCfg` the same way. Also decide the action interface Mako's real controller expects (joint position, like here, or something else) before picking an action term |
+| **A different environment** | `RoboticSoftCfg` in `franka_manager_rl_env_cfg.py` (scene assets, paths in `simulation/utils/assets.py`) | OR layout/access/collision studies are not exercised by this demo at all (single robot, single task, fixed scene) — would lean on Isaac Sim's scene graph and collision APIs directly, which this repo does not currently use |
+| **A different sensor** | Add the sensor cfg in the env cfg, capture it in `sim_with_dds.py`, add a publisher, and a schema in `dds/schemas/` — same pattern the room/wrist cameras and the ultrasound probe pose already follow | Same pattern generalizes to force/torque or tracking-instrument sensors; the ultrasound example is a good template since it shows a sensor that is *not* a native Isaac Sim camera (see the table above) |
+| **A different policy** | New runner in `policy/<name>/runners.py` with `infer(...)`, one branch in `run_policy.py`. The DDS interface stays the same | Same, regardless of what the policy is trained to do |
+| **Tool-tissue interaction / cutting** | Not present: the organ here is a `RigidObjectCfg`, contact only | PhysX deformable/FEM soft-body simulation is the direction; real-time bone resection is a materially harder, largely open problem, not something implicit rigid-body PD drives do |
+| **ROS2 instead of DDS-direct** | This repo talks RTI Connext DDS directly, via custom `Publisher`/`Subscriber` wrappers, not ROS2 | DDS is ROS2's own middleware, so domains/topics/QoS/discovery concepts transfer. Would bridge with `ros2_control` or Isaac Sim's ROS2 bridge instead of the hand-rolled wrappers here |
 
 ---
 
@@ -509,13 +527,50 @@ Practice the whole thing once, with a timer:
 | 15:00 | Troubleshooting stories (below), leading with the two that show judgement under ambiguity (GPU hang, Vulkan/Xvfb) |
 | 18:00 | Where I would extend it for a different robot/environment/sensor, pointed at Mako-shaped changes, then the Jetson / DGX Spark split |
 
-**Troubleshooting stories to have ready** (issue, diagnosis, resolution, what next):
-1. Warp version mismatch broke Isaac Sim extensions (`warp.types` errors). `pip show warp-lang` traced it to an unpinned `isaaclab` dependency. Pinned 1.8.1.
-2. No Vulkan window on container desktops. `vkcube` and `nvidia-smi` showed `Xvfb` instead of a GPU-backed Xorg. Moved to a VM.
-3. Docker export failed with "no space left". A second `chmod -R` duplicated the conda layer. Removed it, bigger disk.
-4. HoloHub CLI broke (`holohub.py` missing). Upstream restructured. Pinned the release-era commit.
-5. Sim "freezes" with the GPU idle. It blocks until the policy replies (firewall for DDS, or the policy not running).
-6. VM crash from a GPU hang. Found in the previous boot's kernel log (`journalctl -b -1 -k`).
+**Troubleshooting stories to have ready** (issue, diagnosis, resolution, what next). Pick 1-2 for the live walkthrough
+(the assignment asks for "at least one or two"); the Warp story and the GPU-idle/DDS story are the strongest —
+Warp shows a full diagnose-to-fix cycle with a clear root cause, and the GPU-idle one directly explains a real
+behavior you will show live in section 3. Keep the rest in reserve for Q&A.
+
+1. **Warp version mismatch broke Isaac Sim extensions** (`AttributeError: module 'warp.types' has no attribute
+   'array'`, on Kit startup). Diagnosed with `pip show warp-lang` inside the image, which traced it to an unpinned
+   `isaaclab` dependency pulling the latest Warp (1.17.0) instead of the 1.8.x Isaac Sim 5.1 needs. Resolved by
+   pinning `warp-lang==1.8.1` in the Dockerfile. *Next if unresolved:* check Isaac Sim 5.1's own release notes/
+   dependency manifest for the exact Warp version it was built against, rather than guessing the latest 1.8.x; file
+   the missing pin upstream against `isaaclab`.
+2. **No Vulkan window on container desktop templates** (`Failed to find a graphics and/or presenting queue`).
+   Diagnosed with `vkcube --c 100` and `nvidia-smi` (no `Xorg` process, type G), which showed the desktop was an
+   `Xvfb` virtual display with no GPU presentation path, not a real GPU-backed X server. Resolved by moving to a
+   VM template with a real Xorg session. *Next if unresolved:* ask the host/provider directly whether any template
+   offers GPU-backed X11 in a container (not all do), or fall back to headless + remote streaming instead of a
+   local window.
+3. **Docker image export failed with "no space left on device."** Diagnosed by noticing the `ml_dtypes` pip step,
+   which should take seconds, was taking ~10 minutes, then confirming with `docker history` that a second
+   `chmod -R a+rX /opt/miniconda3` was copying the entire conda tree into a new overlay layer, doubling image size.
+   Resolved by removing that redundant `chmod` (the first one earlier in the Dockerfile already covers permissions)
+   and renting a larger disk. *Next if unresolved:* split the Dockerfile into more layers to isolate which step is
+   actually ballooning, or switch the build's compression backend (`buildx` supports zstd, faster and sometimes
+   smaller than the default gzip).
+4. **HoloHub CLI broke** (`can't open file .../holohub.py`). Diagnosed by checking HoloHub's own git history, which
+   showed the CLI had been restructured out of `utilities/cli/holohub.py` into a separate package after this
+   workflow's `v0.5.0` release. Resolved by pinning `./i4h` to the HoloHub commit just before that release.
+   *Next if unresolved:* vendor the small set of CLI files this repo actually needs directly into the repo instead
+   of downloading them at runtime, so upstream restructuring cannot break it again.
+5. **Sim appears to "freeze," GPU utilization drops to zero.** Diagnosed by reading `sim_with_dds.py`'s main loop:
+   it blocks in a `while ret is None` wait on the policy's DDS reply whenever the action queue is empty — expected
+   behavior if no policy is running, or if a firewall blocks the DDS multicast traffic, or the policy is still
+   loading its checkpoint. Resolved by opening the required UDP ports (`ufw`) and confirming the policy was
+   actually running. *Next if unresolved:* run both processes with `--verbose` and check `topic_franka_ctrl` traffic
+   directly (e.g. `rtiddsspy` or a packet capture on the multicast address) to confirm messages are actually
+   reaching the wire, and check for a `domain_id` mismatch between the two processes.
+6. **VM crashed and rebooted mid-session** (SSH sessions dropped, Selkies unresponsive). Diagnosed by checking the
+   *previous* boot's kernel log (`journalctl -b -1 -k`, since `dmesg` alone only covers the current boot), which
+   showed `NVRM: krcWatchdog_IMPL: RC watchdog: GPU is probably locked!` — a GPU hang, not an out-of-memory kill or
+   a clean shutdown. No fix was possible from inside the VM; the underlying cause (host/driver/hardware) was never
+   established, only worked around by continuing on the same instance once it came back up. *Next if unresolved:*
+   this is the one story with no real resolution — if it recurred, the next step is reporting the exact timestamps
+   and kernel log lines to the provider's support and renting a different host, since a GPU hang this is not
+   something fixable from inside a guest VM.
 
 ---
 
